@@ -9,7 +9,7 @@ import (
 type Config struct {
 	Enabled bool
 	LogLevel string
-	FirstTimeout time.Duration
+	FirstTimeout int
 	NumNodes int
 	ThingTimeout time.Duration
 }
@@ -32,4 +32,5 @@ func Example() {
 		ThingTimeout: t * time.Second,
 	}
 	_ = http.Server{WriteTimeout: cfg.ThingTimeout}
+	_ = http.Server{IdleTimeout: cfg.ThingTimeout * time.Second}
 }
