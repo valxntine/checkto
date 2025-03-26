@@ -20,6 +20,7 @@ jobs:
           fetch-depth: '0'
 
       - name: Bump and push tag
+        id: tag-merge
         uses: anothrNick/github-tag-action@1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,4 +37,5 @@ jobs:
       - name: Upload Plugin
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag-merge.outputs.new_tag }}
           files: plugin.so
