@@ -17,7 +17,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-      - name: Deps
+      - name: Download Deps
         run: go mod download
       - name: Build Plugin
         run: go build -buildmode=plugin plugin/plugin.go
