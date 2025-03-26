@@ -1,4 +1,4 @@
-package analyzer
+package checkto
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-var Analyzer = &analysis.Analyzer{
+var DurationAnalyzer = &analysis.Analyzer{
 	Name:     "gochecktimeout",
 	Doc:      "Checks struct timeout fields use time.Duration and timeout assignments don't use operations",
 	Run:      run,

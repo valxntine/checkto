@@ -1,0 +1,26 @@
+name: Test
+
+on:
+  pull_request:
+    types:
+      - opened
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Deps
+        run: go mod download
+
+      - name: Test
+        run: go test -v ./...
