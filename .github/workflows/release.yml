@@ -1,9 +1,11 @@
 name: Release Plugin
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_run:
+    workflows: [ "Release Plugin" ]
+    types: [ completed ]
+    branches:
+      - main
 
 jobs:
   build:
