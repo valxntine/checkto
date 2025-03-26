@@ -2,7 +2,7 @@ name: Release Plugin
 
 on:
   workflow_run:
-    workflows: [ "Release Plugin" ]
+    workflows: [ "Tag Version" ]
     types: [ completed ]
     branches:
       - main
