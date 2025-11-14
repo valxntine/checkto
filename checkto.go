@@ -1,7 +1,6 @@
 package checkto
 
 import (
-	"fmt"
 	"go/ast"
 	"strings"
 
@@ -40,6 +39,11 @@ func checkAssignment(node ast.Node, pass *analysis.Pass) {
 		return
 	}
 
+	// Check if Rhs has at least one element
+	if len(assignStmt.Rhs) == 0 {
+		return
+	}
+
 	compLit, ok := assignStmt.Rhs[0].(*ast.CompositeLit)
 	if !ok {
 		return
@@ -55,29 +59,32 @@ func checkAssignment(node ast.Node, pass *analysis.Pass) {
 			continue
 		}
 
-		k := kv.Key.(*ast.Ident).Name
+		// Safely extract the key name
+		keyIdent, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			// Key is not a simple identifier (could be selector, etc.)
+			continue
+		}
+		k := keyIdent.Name
 
 		if strings.Contains(strings.ToLower(k), "timeout") {
-			val, ok := kv.Value.(*ast.BinaryExpr)
+			// Unwrap parenthesized expressions
+			expr := kv.Value
+			for {
+				if parenExpr, ok := expr.(*ast.ParenExpr); ok {
+					expr = parenExpr.X
+				} else {
+					break
+				}
+			}
+
+			val, ok := expr.(*ast.BinaryExpr)
 			if !ok {
 				continue
 			}
 
-			var firstParam string
-			switch val.X.(type) {
-			case *ast.Ident:
-				firstParam = val.X.(*ast.Ident).Name
-			case *ast.SelectorExpr:
-				firstParam = fmt.Sprintf("%s.%s", val.X.(*ast.SelectorExpr).X.(*ast.Ident).Name, val.X.(*ast.SelectorExpr).Sel.Name)
-			}
-
-			var secondParam string
-			switch val.Y.(type) {
-			case *ast.Ident:
-				secondParam = val.Y.(*ast.Ident).Name
-			case *ast.SelectorExpr:
-				secondParam = fmt.Sprintf("%s.%s", val.Y.(*ast.SelectorExpr).X.(*ast.Ident).Name, val.Y.(*ast.SelectorExpr).Sel.Name)
-			}
+			firstParam := exprToString(val.X)
+			secondParam := exprToString(val.Y)
 
 			pass.Reportf(node.Pos(), "assignment to %s contains operation %s %s %s but should use defined time.Duration",
 				k,
@@ -89,6 +96,30 @@ func checkAssignment(node ast.Node, pass *analysis.Pass) {
 	}
 	return
 
+}
+
+// exprToString converts an expression to a string representation
+// Handles various expression types safely without panicking
+func exprToString(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name
+	case *ast.SelectorExpr:
+		// Recursively handle nested selectors like cfg.Inner.Timeout
+		return exprToString(e.X) + "." + e.Sel.Name
+	case *ast.BasicLit:
+		// Integer/float literals like 30, 2.5
+		return e.Value
+	case *ast.CallExpr:
+		// Function calls like getTimeout() or time.Duration(x)
+		return "<function call>"
+	case *ast.ParenExpr:
+		// Parenthesized expressions - unwrap them
+		return exprToString(e.X)
+	default:
+		// Other expression types (unary, type asserts, etc.)
+		return "<expression>"
+	}
 }
 
 func checkFields(node ast.Node, pass *analysis.Pass) {
@@ -103,33 +134,75 @@ func checkFields(node ast.Node, pass *analysis.Pass) {
 	fields := structDef.Fields.List
 
 	for _, f := range fields {
-		if len(f.Names) > 0 && strings.Contains(strings.ToLower(f.Names[0].Name), "timeout") {
-			selectorExpr, ok := f.Type.(*ast.SelectorExpr)
-			if !ok {
-				ident, ok := f.Type.(*ast.Ident)
-				if !ok {
-					continue
-				}
-
-				pass.Reportf(
-					f.Pos(),
-					"timeout field %s should use time.Duration instead of %s",
-					f.Names[0].Name,
-					ident.Name,
-				)
+		// Handle multiple field names on one line (e.g., Start, End, Timeout int)
+		for _, fieldName := range f.Names {
+			if !strings.Contains(strings.ToLower(fieldName.Name), "timeout") {
 				continue
 			}
 
-			x, ok := selectorExpr.X.(*ast.Ident)
-			if !ok || x.Name != "time" || selectorExpr.Sel.Name != "Duration" {
+			// Check if it's time.Duration
+			if isTimeDuration(f.Type) {
+				// Correct type, no warning needed
+				continue
+			}
+
+			// It's a timeout field but not time.Duration - report it
+			typeName := typeToString(f.Type)
+			if typeName != "" {
+				pass.Reportf(
+					f.Pos(),
+					"timeout field %s should use time.Duration instead of %s",
+					fieldName.Name,
+					typeName,
+				)
+			} else {
 				pass.Reportf(
 					f.Pos(),
 					"timeout field %s should use time.Duration",
-					f.Names[0].Name,
+					fieldName.Name,
 				)
 			}
 		}
 	}
 
 	return
+}
+
+// isTimeDuration checks if a type expression is time.Duration or *time.Duration
+func isTimeDuration(expr ast.Expr) bool {
+	// Handle pointer types (*time.Duration)
+	if starExpr, ok := expr.(*ast.StarExpr); ok {
+		expr = starExpr.X
+	}
+
+	selectorExpr, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	x, ok := selectorExpr.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	return x.Name == "time" && selectorExpr.Sel.Name == "Duration"
+}
+
+// typeToString converts a type expression to a readable string
+func typeToString(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name
+	case *ast.SelectorExpr:
+		if x, ok := e.X.(*ast.Ident); ok {
+			return x.Name + "." + e.Sel.Name
+		}
+		return e.Sel.Name
+	case *ast.StarExpr:
+		return "*" + typeToString(e.X)
+	case *ast.ArrayType:
+		return "[]" + typeToString(e.Elt)
+	default:
+		return ""
+	}
 }
