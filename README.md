@@ -32,3 +32,65 @@ func main() {
 	_ = http.Server{WriteTimeout: t * time.Second}
 }
 ```
+
+## golangci-lint Integration
+
+`checkto` can be integrated with golangci-lint as a custom linter plugin.
+
+### Setup
+
+1. Build the plugin:
+
+```bash
+cd plugin
+go build -buildmode=plugin -o plugin.so plugin.go
+```
+
+2. Add the plugin configuration to your `.golangci.yml`:
+
+#### golangci-lint v2 (current)
+
+```yaml
+version: "2"
+
+linters:
+  enable:
+    - checkto
+  settings:
+    custom:
+      checkto:
+        path: ./plugin/plugin.so
+        description: Checks timeout fields use time.Duration and assignments don't use operations
+        original-url: github.com/valxntine/checkto
+```
+
+#### golangci-lint v1 (legacy)
+
+```yaml
+linters-settings:
+  custom:
+    checkto:
+      path: ./plugin/plugin.so
+      description: Checks timeout fields use time.Duration and assignments don't use operations
+      original-url: github.com/valxntine/checkto
+
+linters:
+  enable:
+    - checkto
+```
+
+3. Run golangci-lint:
+
+```bash
+golangci-lint run
+```
+
+### Standalone Usage
+
+You can also use `checkto` as a standalone analyzer without golangci-lint by importing it directly in your analysis tool:
+
+```go
+import "github.com/valxntine/checkto"
+
+// Use checkto.DurationAnalyzer in your analysis driver
+```
